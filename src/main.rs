@@ -1,10 +1,12 @@
-use bevy::color::palettes::css::RED;
+use bevy::color::palettes::css::{BLUE, RED};
 use bevy::prelude::*;
 use bevy::render::RenderPlugin;
 use bevy::render::settings::{Backends, RenderCreation, WgpuSettings};
 
 const PADDLE_SPEED: f32 = 400.0;
 const PADDLE_WIDTH: f32 = 100.0;
+const BRICK_ROWS: usize = 5;
+const BRICK_COLUMNS: usize = 10;
 
 fn main() {
     App::new()
@@ -18,12 +20,18 @@ fn main() {
         }))
         .insert_resource(ClearColor(Color::srgb(0.95, 0.95, 0.95)))
         .add_systems(Startup, setup)
-        .add_systems(Update, move_paddle)
+        .add_systems(FixedUpdate, move_paddle)
         .run();
 }
 
 #[derive(Component)]
 struct Paddle;
+
+#[derive(Component)]
+struct Ball;
+
+#[derive(Component)]
+struct Brick;
 
 fn setup(
     mut commands: Commands,
@@ -42,6 +50,30 @@ fn setup(
             ..default()
         },
     ));
+
+    let brick_area_gutter = 10.0;
+    let brick_gap = 5.0;
+    let brick_height = 20.0;
+    let brick_area_width = window.width() - brick_area_gutter * 2.0 - brick_gap * (BRICK_COLUMNS as f32 - 1.0);
+    let brick_width = brick_area_width / BRICK_COLUMNS as f32;
+    let column_start = -window.width() / 2.0 + brick_area_gutter + brick_width / 2.0;
+    let row_start  = window.height() / 2.0 - brick_area_gutter - brick_height / 2.0;
+
+    for row in 0..BRICK_ROWS {
+        for column in 0..BRICK_COLUMNS {
+            let mut brick_x = column_start + column as f32 * (brick_width + brick_gap);
+            let mut brick_y = row_start - row as f32 * (brick_height + brick_gap);
+            commands.spawn((
+                Brick,
+                Mesh2d(meshes.add(Rectangle::new(brick_width, brick_height))),
+                MeshMaterial2d(materials.add(ColorMaterial::from_color(BLUE))),
+                Transform{
+                    translation: Vec3::new( brick_x, brick_y, 0.0),
+                    ..default()
+                }
+            ));
+        }
+    }
 }
 
 fn move_paddle(
@@ -63,8 +95,7 @@ fn move_paddle(
     //     paddle_transform.translation.x = paddle_transform.translation.x - PADDLE_SPEED * time.delta_secs();
     // }
 
-
-    if point.x < ((window.width() / 2.0) - PADDLE_WIDTH / 2.0) && point.x > ((-window.width() / 2.0) + PADDLE_WIDTH / 2.0) {
+    if point.x < (window.width() / 2.0 - PADDLE_WIDTH / 2.0) && point.x > (-window.width() / 2.0 + PADDLE_WIDTH / 2.0) {
          paddle_transform.translation.x = point.x;
     }
 
