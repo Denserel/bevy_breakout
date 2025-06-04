@@ -1,25 +1,26 @@
-use bevy::color::palettes::css::{BLUE, RED};
+use bevy::color::palettes::css::{BLUE, PURPLE, RED};
 use bevy::prelude::*;
-use bevy::render::RenderPlugin;
-use bevy::render::settings::{Backends, RenderCreation, WgpuSettings};
+use bevy::window::WindowMode;
 
 const PADDLE_SPEED: f32 = 400.0;
 const PADDLE_WIDTH: f32 = 100.0;
 const BRICK_ROWS: usize = 5;
-const BRICK_COLUMNS: usize = 10;
+const BRICK_COLUMNS: usize = 20;
+const BALL_RADIUS: f32 = 10.0;
+const BALL_SPEED: f32 = 300.0;
 
 fn main() {
     App::new()
-        // .add_plugins(DefaultPlugins)
-        .add_plugins(DefaultPlugins.set(RenderPlugin {
-            render_creation: RenderCreation::Automatic(WgpuSettings {
-                backends: Some(Backends::VULKAN),
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(DefaultPlugins)
+        // .add_plugins(DefaultPlugins.set(RenderPlugin {
+        //     render_creation: RenderCreation::Automatic(WgpuSettings {
+        //         backends: Some(Backends::VULKAN),
+        //         ..default()
+        //     }),
+        //     ..default()
+        // }))
         .insert_resource(ClearColor(Color::srgb(0.95, 0.95, 0.95)))
-        .add_systems(Startup, setup)
+        .add_systems(Startup, (setup_window, setup).chain())
         .add_systems(FixedUpdate, move_paddle)
         .run();
 }
@@ -32,6 +33,17 @@ struct Ball;
 
 #[derive(Component)]
 struct Brick;
+
+fn setup_window(mut commands: Commands){
+    commands.spawn(Window {
+        title: "Bevy Breakout".to_string(),
+        position: WindowPosition::Centered(MonitorSelection::Current),
+        mode: WindowMode::BorderlessFullscreen(
+            MonitorSelection::Current
+        ),
+        ..default()
+    });
+}
 
 fn setup(
     mut commands: Commands,
@@ -51,6 +63,16 @@ fn setup(
         },
     ));
 
+    commands.spawn((
+        Ball,
+        Mesh2d(meshes.add(Circle::new(BALL_RADIUS))),
+        MeshMaterial2d(materials.add(ColorMaterial::from_color(PURPLE))),
+        Transform {
+            translation: Vec3::new(0.0, -window.height() / 2.0 + 80.0, 0.0),
+            ..default()
+        }
+    ));
+
     let brick_area_gutter = 10.0;
     let brick_gap = 5.0;
     let brick_height = 20.0;
@@ -61,8 +83,8 @@ fn setup(
 
     for row in 0..BRICK_ROWS {
         for column in 0..BRICK_COLUMNS {
-            let mut brick_x = column_start + column as f32 * (brick_width + brick_gap);
-            let mut brick_y = row_start - row as f32 * (brick_height + brick_gap);
+            let brick_x = column_start + column as f32 * (brick_width + brick_gap);
+            let brick_y = row_start - row as f32 * (brick_height + brick_gap);
             commands.spawn((
                 Brick,
                 Mesh2d(meshes.add(Rectangle::new(brick_width, brick_height))),
@@ -77,26 +99,24 @@ fn setup(
 }
 
 fn move_paddle(
-    // keyboard_input: Res<ButtonInput<KeyCode>>,
     mut paddle_transform: Single<&mut Transform, With<Paddle>>,
-    camera_query: Single<(&Camera, &GlobalTransform)>,
     window: Single<&Window>,
-    // time: Res<Time>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
+    // camera_query: Single<(&Camera, &GlobalTransform)>,
 ){
-    let (camera, camera_transform) = *camera_query;
-    let Some(cursor_position) = window.cursor_position() else { return; };
-    let Ok(point) = camera.viewport_to_world_2d(camera_transform, cursor_position) else { return; };
-
-    // if keyboard_input.pressed(KeyCode::KeyD) && (paddle_transform.translation.x < ((window.width() / 2.0) - PADDLE_WIDTH / 2.0)) {
-    //     paddle_transform.translation.x = paddle_transform.translation.x + PADDLE_SPEED * time.delta_secs();
+    // let (camera, camera_transform) = *camera_query;
+    // let Some(cursor_position) = window.cursor_position() else { return; };
+    // let Ok(point) = camera.viewport_to_world_2d(camera_transform, cursor_position) else { return; };
+    // if point.x < (window.width() / 2.0 - PADDLE_WIDTH / 2.0) && point.x > (-window.width() / 2.0 + PADDLE_WIDTH / 2.0) {
+    //      paddle_transform.translation.x = point.x;
     // }
-
-    // if keyboard_input.pressed(KeyCode::KeyA) && (paddle_transform.translation.x > ((-window.width() / 2.0) + PADDLE_WIDTH / 2.0)){
-    //     paddle_transform.translation.x = paddle_transform.translation.x - PADDLE_SPEED * time.delta_secs();
-    // }
-
-    if point.x < (window.width() / 2.0 - PADDLE_WIDTH / 2.0) && point.x > (-window.width() / 2.0 + PADDLE_WIDTH / 2.0) {
-         paddle_transform.translation.x = point.x;
+    
+    if keyboard_input.pressed(KeyCode::KeyD) && (paddle_transform.translation.x < ((window.width() / 2.0) - PADDLE_WIDTH / 2.0)) {
+        paddle_transform.translation.x = paddle_transform.translation.x + PADDLE_SPEED * time.delta_secs();
     }
-
+    
+    if keyboard_input.pressed(KeyCode::KeyA) && (paddle_transform.translation.x > ((-window.width() / 2.0) + PADDLE_WIDTH / 2.0)){
+        paddle_transform.translation.x = paddle_transform.translation.x - PADDLE_SPEED * time.delta_secs();
+    }
 }
