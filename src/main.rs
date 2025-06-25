@@ -21,8 +21,12 @@ fn main() {
             ..default()
         }))
         .insert_resource(ClearColor(Color::srgb(0.95, 0.95, 0.95)))
+        .add_event::<CollisionEvent>()
         .add_systems(Startup, setup)
-        .add_systems(FixedUpdate, move_paddle)
+        .add_systems(
+            FixedUpdate,
+            (move_paddle, move_ball).chain(),
+        )
         .run();
 }
 
@@ -34,6 +38,9 @@ struct Ball;
 
 #[derive(Component)]
 struct Brick;
+
+#[derive(Event, Default)]
+struct CollisionEvent;
 
 fn setup(
     mut commands: Commands,
@@ -58,7 +65,7 @@ fn setup(
         Mesh2d(meshes.add(Circle::new(BALL_RADIUS))),
         MeshMaterial2d(materials.add(ColorMaterial::from_color(PURPLE))),
         Transform {
-            translation: Vec3::new(0.0, -window.height() / 2.0 + 80.0, 0.0),
+            translation: Vec3::new(0.0, -window.height() / 2.0 + 70.0, 0.0),
             ..default()
         },
     ));
@@ -115,5 +122,56 @@ fn move_paddle(
     {
         paddle_transform.translation.x =
             paddle_transform.translation.x - PADDLE_SPEED * time.delta_secs();
+    }
+}
+
+fn move_ball(
+    mut ball_transform: Single<&mut Transform, With<Ball>>,
+    time: Res<Time>,
+    window: Single<&Window>,
+) {
+    let mut collide_x = false;
+    let mut collide_y = false;
+
+    // Check window collisions
+    if ball_transform.translation.x + BALL_RADIUS > window.width() / 2.0 {
+        // ball_transform.translation.x = ball_transform.translation.x + BALL_SPEED * time.delta_secs()
+        collide_x = true;
+    }
+
+    if ball_transform.translation.x - BALL_RADIUS < -window.width() / 2.0 {
+        // ball_transform.translation.x = ball_transform.translation.x - BALL_SPEED * time.delta_secs()
+        collide_x = false;
+    }
+
+    if ball_transform.translation.y + BALL_RADIUS > window.height() / 2.0 {
+        // ball_transform.translation.y = ball_transform.translation.y - BALL_SPEED * time.delta_secs()
+        collide_y = true;
+    }
+
+    if ball_transform.translation.y - BALL_RADIUS < -window.height() / 2.0 {
+        // ball_transform.translation.y = ball_transform.translation.y + BALL_SPEED * time.delta_secs()
+        collide_y = false;
+    }
+
+    ball_transform.translation.x = if collide_x { ball_transform.translation.x - BALL_SPEED * time.delta_secs()}
+    else {ball_transform.translation.x + BALL_SPEED * time.delta_secs()};
+    
+    ball_transform.translation.y =  if collide_y { ball_transform.translation.y - BALL_SPEED * time.delta_secs()}
+    else {ball_transform.translation.y + BALL_SPEED * time.delta_secs()};
+}
+
+fn collation_check(
+    mut ball_transform: Single<&mut Transform, With<Ball>>,
+    window: Single<&Window>,
+    time: Res<Time>,
+) {
+    // Check window collisions
+    if ball_transform.translation.x + BALL_RADIUS / 2.0 > window.width() / 2.0 {
+        ball_transform.translation.x = ball_transform.translation.x - BALL_SPEED * time.delta_secs()
+    }
+
+    if ball_transform.translation.y + BALL_RADIUS / 2.0 > window.height() / 2.0 {
+        ball_transform.translation.y = ball_transform.translation.y - BALL_SPEED * time.delta_secs()
     }
 }
