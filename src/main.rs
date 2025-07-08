@@ -130,48 +130,5 @@ fn move_ball(
     time: Res<Time>,
     window: Single<&Window>,
 ) {
-    let mut collide_x = false;
-    let mut collide_y = false;
-
-    // Check window collisions
-    if ball_transform.translation.x + BALL_RADIUS > window.width() / 2.0 {
-        // ball_transform.translation.x = ball_transform.translation.x + BALL_SPEED * time.delta_secs()
-        collide_x = true;
-    }
-
-    if ball_transform.translation.x - BALL_RADIUS < -window.width() / 2.0 {
-        // ball_transform.translation.x = ball_transform.translation.x - BALL_SPEED * time.delta_secs()
-        collide_x = false;
-    }
-
-    if ball_transform.translation.y + BALL_RADIUS > window.height() / 2.0 {
-        // ball_transform.translation.y = ball_transform.translation.y - BALL_SPEED * time.delta_secs()
-        collide_y = true;
-    }
-
-    if ball_transform.translation.y - BALL_RADIUS < -window.height() / 2.0 {
-        // ball_transform.translation.y = ball_transform.translation.y + BALL_SPEED * time.delta_secs()
-        collide_y = false;
-    }
-
-    ball_transform.translation.x = if collide_x { ball_transform.translation.x - BALL_SPEED * time.delta_secs()}
-    else {ball_transform.translation.x + BALL_SPEED * time.delta_secs()};
     
-    ball_transform.translation.y =  if collide_y { ball_transform.translation.y - BALL_SPEED * time.delta_secs()}
-    else {ball_transform.translation.y + BALL_SPEED * time.delta_secs()};
-}
-
-fn collation_check(
-    mut ball_transform: Single<&mut Transform, With<Ball>>,
-    window: Single<&Window>,
-    time: Res<Time>,
-) {
-    // Check window collisions
-    if ball_transform.translation.x + BALL_RADIUS / 2.0 > window.width() / 2.0 {
-        ball_transform.translation.x = ball_transform.translation.x - BALL_SPEED * time.delta_secs()
-    }
-
-    if ball_transform.translation.y + BALL_RADIUS / 2.0 > window.height() / 2.0 {
-        ball_transform.translation.y = ball_transform.translation.y - BALL_SPEED * time.delta_secs()
-    }
 }
