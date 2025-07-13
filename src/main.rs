@@ -42,6 +42,9 @@ struct Brick;
 #[derive(Event, Default)]
 struct CollisionEvent;
 
+#[derive(Component, Deref, DerefMut, Debug)]
+struct Velocity(Vec2);
+
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -62,6 +65,7 @@ fn setup(
 
     commands.spawn((
         Ball,
+        Velocity(Vec2::new(BALL_SPEED * 1.0, BALL_SPEED * 1.0)),
         Mesh2d(meshes.add(Circle::new(BALL_RADIUS))),
         MeshMaterial2d(materials.add(ColorMaterial::from_color(PURPLE))),
         Transform {
@@ -126,9 +130,28 @@ fn move_paddle(
 }
 
 fn move_ball(
-    mut ball_transform: Single<&mut Transform, With<Ball>>,
+    ball_query: Query<(&mut Transform, &mut Velocity), With<Ball>>,
     time: Res<Time>,
     window: Single<&Window>,
 ) {
+    for (mut ball_transform, mut ball_velocity) in ball_query {
+
+        // Basic window collision detection
+        if ball_transform.translation.x + BALL_RADIUS >= window.width() / 2.0 || ball_transform.translation.x - BALL_RADIUS <= -window.width() / 2.0 {
+            ball_velocity.x *= -1.0;
+        }
+
+        if ball_transform.translation.y + BALL_RADIUS >= window.height() / 2.0 || ball_transform.translation.y - BALL_RADIUS <= -window.height() / 2.0 {
+            ball_velocity.y *= -1.0;
+        }
+
+        // println!("Ball velocity: X: {:?}, Y: {:?}", ball_velocity.x, ball_velocity.y);
+
+        ball_transform.translation.x += ball_velocity.x * time.delta_secs();
+        ball_transform.translation.y += ball_velocity.y * time.delta_secs();
+
+        // clearprintln!("Ball transform: X: {:?}, Y: {:?}", ball_transform.translation.x, ball_transform.translation.y);
+    }
+
     
 }
