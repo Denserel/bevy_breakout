@@ -1,6 +1,5 @@
 use bevy::color::palettes::css::{BLUE, PURPLE, RED};
 use bevy::prelude::*;
-use bevy::window::WindowMode;
 
 const PADDLE_SPEED: f32 = 400.0;
 const PADDLE_WIDTH: f32 = 100.0;
@@ -21,12 +20,9 @@ fn main() {
             ..default()
         }))
         .insert_resource(ClearColor(Color::srgb(0.95, 0.95, 0.95)))
-        .add_event::<CollisionEvent>()
+        // .add_event::<CollisionEvent>()
         .add_systems(Startup, setup)
-        .add_systems(
-            FixedUpdate,
-            (move_paddle, move_ball).chain(),
-        )
+        .add_systems(FixedUpdate, (move_paddle, move_ball))
         .run();
 }
 
@@ -107,6 +103,7 @@ fn move_paddle(
     time: Res<Time>,
     // camera_query: Single<(&Camera, &GlobalTransform)>,
 ) {
+    // Move paddle with moues
     // let (camera, camera_transform) = *camera_query;
     // let Some(cursor_position) = window.cursor_position() else { return; };
     // let Ok(point) = camera.viewport_to_world_2d(camera_transform, cursor_position) else { return; };
@@ -114,6 +111,7 @@ fn move_paddle(
     //      paddle_transform.translation.x = point.x;
     // }
 
+    // Move paddle with keys
     if keyboard_input.pressed(KeyCode::KeyD)
         && (paddle_transform.translation.x < ((window.width() / 2.0) - PADDLE_WIDTH / 2.0))
     {
@@ -130,28 +128,41 @@ fn move_paddle(
 }
 
 fn move_ball(
-    ball_query: Query<(&mut Transform, &mut Velocity), With<Ball>>,
+    ball_query: Single<(&mut Transform, &mut Velocity), With<Ball>>,
     time: Res<Time>,
     window: Single<&Window>,
 ) {
-    for (mut ball_transform, mut ball_velocity) in ball_query {
+    // for (mut ball_transform, mut ball_velocity) in ball_query {
 
-        // Basic window collision detection
-        if ball_transform.translation.x + BALL_RADIUS >= window.width() / 2.0 || ball_transform.translation.x - BALL_RADIUS <= -window.width() / 2.0 {
-            ball_velocity.x *= -1.0;
-        }
+    //     // ToDo: move collision detection to event
+    //     // Basic window collision detection
+    //     if ball_transform.translation.x + BALL_RADIUS >= window.width() / 2.0 || ball_transform.translation.x - BALL_RADIUS <= -window.width() / 2.0 {
+    //         ball_velocity.x *= -1.0;
+    //     }
 
-        if ball_transform.translation.y + BALL_RADIUS >= window.height() / 2.0 || ball_transform.translation.y - BALL_RADIUS <= -window.height() / 2.0 {
-            ball_velocity.y *= -1.0;
-        }
+    //     if ball_transform.translation.y + BALL_RADIUS >= window.height() / 2.0 || ball_transform.translation.y - BALL_RADIUS <= -window.height() / 2.0 {
+    //         ball_velocity.y *= -1.0;
+    //     }
 
-        // println!("Ball velocity: X: {:?}, Y: {:?}", ball_velocity.x, ball_velocity.y);
+    //     ball_transform.translation.x += ball_velocity.x * time.delta_secs();
+    //     ball_transform.translation.y += ball_velocity.y * time.delta_secs();
+    // }
 
-        ball_transform.translation.x += ball_velocity.x * time.delta_secs();
-        ball_transform.translation.y += ball_velocity.y * time.delta_secs();
-
-        // clearprintln!("Ball transform: X: {:?}, Y: {:?}", ball_transform.translation.x, ball_transform.translation.y);
+    let (mut ball_transform, mut ball_velocity) = ball_query.into_inner();
+    // ToDo: move collision detection to event
+    // Basic window collision detection
+    if ball_transform.translation.x + BALL_RADIUS >= window.width() / 2.0
+        || ball_transform.translation.x - BALL_RADIUS <= -window.width() / 2.0
+    {
+        ball_velocity.x *= -1.0;
     }
 
-    
+    if ball_transform.translation.y + BALL_RADIUS >= window.height() / 2.0
+        || ball_transform.translation.y - BALL_RADIUS <= -window.height() / 2.0
+    {
+        ball_velocity.y *= -1.0;
+    }
+
+    ball_transform.translation.x += ball_velocity.x * time.delta_secs();
+    ball_transform.translation.y += ball_velocity.y * time.delta_secs();
 }
