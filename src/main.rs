@@ -1,10 +1,7 @@
-use std::ops::Add;
-
-use bevy::color::palettes::css::{BLUE, PURPLE, RED};
-use bevy::ecs::world::WorldEntityFetch;
 use bevy::math::bounding::{Aabb2d, BoundingCircle, BoundingVolume, IntersectsVolume};
 use bevy::prelude::*;
 use bevy::window::WindowMode;
+use rand::Rng;
 
 const PADDLE_SPEED: f32 = 600.0;
 const PADDLE_WIDTH: f32 = 100.0;
@@ -19,15 +16,18 @@ fn main() {
             primary_window: Some(Window {
                 title: "Bevy Breakout".to_string(),
                 resizable: false,
-                // position: WindowPosition::Centered(MonitorSelection::Primary),
-                mode: WindowMode::BorderlessFullscreen(MonitorSelection::Primary),
+                position: WindowPosition::Centered(MonitorSelection::Primary),
+                // mode: WindowMode::BorderlessFullscreen(MonitorSelection::Primary),
                 ..default()
             }),
             ..default()
         }))
         .insert_resource(ClearColor(Color::srgb(0.95, 0.95, 0.95)))
         .add_systems(Startup, setup)
-        .add_systems(FixedUpdate, (check_collision, apply_velocity, move_paddle))
+        .add_systems(
+            FixedUpdate,
+            (move_paddle, check_collision, apply_velocity).chain(),
+        )
         .add_observer(on_collision)
         .run();
 }
@@ -66,23 +66,25 @@ fn setup(
 ) {
     commands.spawn(Camera2d);
 
-    commands.spawn((
-        Paddle,
-        Collider,
-        Mesh2d(meshes.add(Rectangle::default())),
-        MeshMaterial2d(materials.add(ColorMaterial::from_color(RED))),
-        Transform {
-            translation: Vec3::new(0.0, -window.height() / 2.0 + 50.0, 0.0),
-            scale: Vec3::new(PADDLE_WIDTH, 22.0, 1.0),
-            ..default()
-        },
-    ));
+    commands
+        .spawn((
+            Paddle,
+            Collider,
+            Mesh2d(meshes.add(Rectangle::default())),
+            MeshMaterial2d(materials.add(Color::srgb(0.6, 0.2, 0.2))),
+            Transform {
+                translation: Vec3::new(0.0, -window.height() / 2.0 + 50.0, 0.0),
+                scale: Vec3::new(PADDLE_WIDTH, 22.0, 1.0),
+                ..default()
+            },
+        ))
+        .observe(on_paddle_collision);
 
     commands.spawn((
         Ball,
         Velocity(Vec2::new(BALL_SPEED, BALL_SPEED)),
         Mesh2d(meshes.add(Circle::default())),
-        MeshMaterial2d(materials.add(ColorMaterial::from_color(PURPLE))),
+        MeshMaterial2d(materials.add(Color::srgb(0.6, 0.1, 0.5))),
         Transform {
             translation: Vec3::new(0.0, -window.height() / 2.0 + 70.0, 0.0),
             scale: Vec2::splat(BALL_RADIUS * 2.0).extend(1.0),
@@ -100,6 +102,9 @@ fn setup(
     let row_start = window.height() / 2.0 - brick_area_gutter - brick_height / 2.0;
 
     for row in 0..BRICK_ROWS {
+        let r = rand::thread_rng().gen_range(0.2..0.8);
+        let g = rand::thread_rng().gen_range(0.2..0.8);
+        let b = rand::thread_rng().gen_range(0.2..0.8);
         for column in 0..BRICK_COLUMNS {
             let brick_x = column_start + column as f32 * (brick_width + brick_gap);
             let brick_y = row_start - row as f32 * (brick_height + brick_gap);
@@ -108,7 +113,7 @@ fn setup(
                     Brick,
                     Collider,
                     Mesh2d(meshes.add(Rectangle::default())),
-                    MeshMaterial2d(materials.add(ColorMaterial::from_color(BLUE))),
+                    MeshMaterial2d(materials.add(Color::srgb(r, g, b))),
                     Transform {
                         translation: Vec3::new(brick_x, brick_y, 0.0),
                         scale: Vec3::new(brick_width, brick_height, 1.0),
@@ -180,43 +185,65 @@ fn check_collision(
     mut commands: Commands,
     window: Single<&Window>,
     ball_query: Single<(&Transform, &mut Velocity), With<Ball>>,
+    paddle_query: Query<&Paddle>,
     collider_query: Query<(Entity, &Transform), With<Collider>>,
 ) {
     let (ball_transform, mut ball_velocity) = ball_query.into_inner();
+    let window_half_with = window.width() / 2.0;
+    let window_half_height = window.height() / 2.0;
 
-    if ball_transform.translation.x + BALL_RADIUS >= window.width() / 2.0
-        || ball_transform.translation.x - BALL_RADIUS <= -window.width() / 2.0
-    {
-        ball_velocity.x *= -1.0;
+    if ball_transform.translation.x + BALL_RADIUS >= window_half_with {
+        ball_velocity.x = -ball_velocity.x.abs();
+    } else if ball_transform.translation.x - BALL_RADIUS <= -window_half_with {
+        ball_velocity.x = ball_velocity.x.abs();
     }
 
-    if ball_transform.translation.y + BALL_RADIUS >= window.height() / 2.0
-        || ball_transform.translation.y - BALL_RADIUS <= -window.height() / 2.0
-    {
-        ball_velocity.y *= -1.0;
+    if ball_transform.translation.y + BALL_RADIUS >= window_half_height {
+        ball_velocity.y = -ball_velocity.y.abs()
+    } else if ball_transform.translation.y - BALL_RADIUS <= -window_half_height {
+        ball_velocity.y = ball_velocity.y.abs()
     }
+
+    let ball_bounding_circle =
+        BoundingCircle::new(ball_transform.translation.truncate(), BALL_RADIUS);
 
     for (entity, transform) in &collider_query {
-        let ball_box = BoundingCircle::new(ball_transform.translation.truncate(), BALL_RADIUS);
-        let entity_box = Aabb2d::new(
+        let collision_entity_bounding_box = Aabb2d::new(
             transform.translation.truncate(),
             transform.scale.truncate() / 2.0,
         );
 
-        if ball_box.intersects(&entity_box) {
-            let closest = entity_box.closest_point(ball_box.center());
-            let offset = ball_box.center() - closest;
-
+        if ball_bounding_circle.intersects(&collision_entity_bounding_box) {
+            let closest =
+                collision_entity_bounding_box.closest_point(ball_bounding_circle.center());
+            let offset = ball_bounding_circle.center() - closest;
+            // let distance = offset.length();
             let normal = if offset == Vec2::ZERO {
-                (ball_box.center() - entity_box.center()).normalize_or_zero()
+                (ball_bounding_circle.center() - collision_entity_bounding_box.center())
+                    .normalize_or_zero()
             } else {
                 offset.normalize()
             };
+
+            // let overlap = BALL_RADIUS - distance;
+            // ball_transform.translation += (normal * overlap).extend(0.0);
 
             if normal.x.abs() > normal.y.abs() {
                 ball_velocity.x = ball_velocity.x.abs() * normal.x.signum()
             } else {
                 ball_velocity.y = ball_velocity.y.abs() * normal.y.signum()
+            }
+
+            if paddle_query.get(entity).is_ok() {
+                let paddle_relative_impact_point = (ball_bounding_circle.center().x
+                    - collision_entity_bounding_box.center().x)
+                    / (PADDLE_WIDTH / 2.0);
+
+                let speed = ball_velocity.length();
+                let new_x = paddle_relative_impact_point * 0.8;
+                let new_direction = Vec2::new(new_x, 1.0).normalize();
+
+                ball_velocity.0 = new_direction * speed;
             }
 
             commands.trigger(CollisionEvent { entity });
@@ -229,8 +256,12 @@ fn on_brick_collision(collision: On<CollisionEvent>, mut commands: Commands) {
     commands.entity(entity).despawn();
 }
 
-fn on_collision(collision: On<CollisionEvent>, ball: Single<&mut Velocity, With<Ball>>) {
-    let entity = collision.entity;
-    let mut ball_velocity = ball.into_inner();
+fn on_paddle_collision(collision: On<CollisionEvent>) {}
+
+fn on_collision(
+    collision: On<CollisionEvent>,
+    mut ball_velocity: Single<&mut Velocity, With<Ball>>,
+) {
+    // let entity = collision.entity;
     ball_velocity.accelerate();
 }
