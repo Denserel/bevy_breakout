@@ -6,7 +6,7 @@ use rand::Rng;
 const PADDLE_SPEED: f32 = 600.0;
 const PADDLE_WIDTH: f32 = 100.0;
 const BRICK_ROWS: usize = 10;
-const BRICK_COLUMNS: usize = 30;
+const BRICK_COLUMNS: usize = 20;
 const BALL_RADIUS: f32 = 10.0;
 const BALL_SPEED: f32 = 300.0;
 
@@ -23,10 +23,11 @@ fn main() {
             ..default()
         }))
         .insert_resource(ClearColor(Color::srgb(0.95, 0.95, 0.95)))
+        .insert_resource(Time::<Fixed>::from_hz(120.0))
         .add_systems(Startup, setup)
         .add_systems(
             FixedUpdate,
-            (move_paddle, check_collision, apply_velocity).chain(),
+            (move_paddle, apply_velocity, check_collision).chain(),
         )
         .add_observer(on_collision)
         .run();
@@ -43,7 +44,8 @@ struct Brick;
 
 #[derive(EntityEvent)]
 struct CollisionEvent {
-    entity: Entity,
+    pub entity: Entity,
+    pub nudge: Vec2,
 }
 
 impl Velocity {
@@ -80,17 +82,19 @@ fn setup(
         ))
         .observe(on_paddle_collision);
 
-    commands.spawn((
-        Ball,
-        Velocity(Vec2::new(BALL_SPEED, BALL_SPEED)),
-        Mesh2d(meshes.add(Circle::default())),
-        MeshMaterial2d(materials.add(Color::srgb(0.6, 0.1, 0.5))),
-        Transform {
-            translation: Vec3::new(0.0, -window.height() / 2.0 + 70.0, 0.0),
-            scale: Vec2::splat(BALL_RADIUS * 2.0).extend(1.0),
-            ..default()
-        },
-    ));
+    commands
+        .spawn((
+            Ball,
+            Velocity(Vec2::new(BALL_SPEED, BALL_SPEED)),
+            Mesh2d(meshes.add(Circle::default())),
+            MeshMaterial2d(materials.add(Color::srgb(0.6, 0.1, 0.5))),
+            Transform {
+                translation: Vec3::new(0.0, -window.height() / 2.0 + 70.0, 0.0),
+                scale: Vec2::splat(BALL_RADIUS * 2.0).extend(1.0),
+                ..default()
+            },
+        ))
+        .observe(on_ball_collision);
 
     let brick_area_gutter = 10.0;
     let brick_gap = 5.0;
@@ -102,9 +106,9 @@ fn setup(
     let row_start = window.height() / 2.0 - brick_area_gutter - brick_height / 2.0;
 
     for row in 0..BRICK_ROWS {
-        let r = rand::thread_rng().gen_range(0.2..0.8);
-        let g = rand::thread_rng().gen_range(0.2..0.8);
-        let b = rand::thread_rng().gen_range(0.2..0.8);
+        let r = rand::rng().random_range(0.0..1.0);
+        let g = rand::rng().random_range(0.0..1.0);
+        let b = rand::rng().random_range(0.0..1.0);
         for column in 0..BRICK_COLUMNS {
             let brick_x = column_start + column as f32 * (brick_width + brick_gap);
             let brick_y = row_start - row as f32 * (brick_height + brick_gap);
@@ -130,48 +134,39 @@ fn move_paddle(
     window: Single<&Window>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
-    // camera_query: Single<(&Camera, &GlobalTransform)>,
+    camera_query: Single<(&Camera, &GlobalTransform)>,
 ) {
-    // Move paddle with moues
-    // let (camera, camera_transform) = *camera_query;
-    // let Some(cursor_position) = window.cursor_position() else { return; };
-    // let Ok(point) = camera.viewport_to_world_2d(camera_transform, cursor_position) else { return; };
-    // if point.x < (window.width() / 2.0 - PADDLE_WIDTH / 2.0) && point.x > (-window.width() / 2.0 + PADDLE_WIDTH / 2.0) {
-    //      paddle_transform.translation.x = point.x;
-    // }
-
-    // Move paddle with keys
-    // if keyboard_input.pressed(KeyCode::KeyD)
-    //     && (paddle_transform.translation.x < ((window.width() / 2.0) - PADDLE_WIDTH / 2.0))
-    // {
-    //     paddle_transform.translation.x =
-    //         paddle_transform.translation.x + PADDLE_SPEED * time.delta_secs();
-    // }
-
-    // if keyboard_input.pressed(KeyCode::KeyA)
-    //     && (paddle_transform.translation.x > ((-window.width() / 2.0) + PADDLE_WIDTH / 2.0))
-    // {
-    //     paddle_transform.translation.x =
-    //         paddle_transform.translation.x - PADDLE_SPEED * time.delta_secs();
-    // }
-
     let paddle_half_width = PADDLE_WIDTH / 2.0;
     let window_half_width = window.width() / 2.0;
 
-    let mut direction = 0.0;
-    if keyboard_input.pressed(KeyCode::KeyA) {
-        direction -= 1.0;
-    }
-    if keyboard_input.pressed(KeyCode::KeyD) {
-        direction += 1.0;
-    }
+    // Move paddle with moues
+    let (camera, camera_transform) = *camera_query;
+    let Some(cursor_position) = window.cursor_position() else {
+        return;
+    };
+    let Ok(point) = camera.viewport_to_world_2d(camera_transform, cursor_position) else {
+        return;
+    };
 
-    let paddle_new_position =
-        paddle_transform.translation.x + direction * PADDLE_SPEED * time.delta_secs();
-    paddle_transform.translation.x = paddle_new_position.clamp(
+    paddle_transform.translation.x = point.x.clamp(
         -window_half_width + paddle_half_width,
         window_half_width - paddle_half_width,
-    );
+    )
+
+    // let mut direction = 0.0;
+    // if keyboard_input.pressed(KeyCode::KeyA) {
+    //     direction -= 1.0;
+    // }
+    // if keyboard_input.pressed(KeyCode::KeyD) {
+    //     direction += 1.0;
+    // }
+
+    // let paddle_new_position =
+    //     paddle_transform.translation.x + direction * PADDLE_SPEED * time.delta_secs();
+    // paddle_transform.translation.x = paddle_new_position.clamp(
+    //     -window_half_width + paddle_half_width,
+    //     window_half_width - paddle_half_width,
+    // );
 }
 
 fn apply_velocity(ball_query: Single<(&mut Transform, &Velocity), With<Ball>>, time: Res<Time>) {
@@ -217,16 +212,17 @@ fn check_collision(
             let closest =
                 collision_entity_bounding_box.closest_point(ball_bounding_circle.center());
             let offset = ball_bounding_circle.center() - closest;
-            // let distance = offset.length();
+            let distance = offset.length();
             let normal = if offset == Vec2::ZERO {
-                (ball_bounding_circle.center() - collision_entity_bounding_box.center())
-                    .normalize_or_zero()
+                Vec2::Y
+                // (ball_bounding_circle.center() - collision_entity_bounding_box.center()).normalize_or_zero()
             } else {
-                offset.normalize()
+                offset / distance
+                // offset.normalize()
             };
 
-            // let overlap = BALL_RADIUS - distance;
-            // ball_transform.translation += (normal * overlap).extend(0.0);
+            let overlap = BALL_RADIUS - distance;
+            let nudge = normal * overlap;
 
             if normal.x.abs() > normal.y.abs() {
                 ball_velocity.x = ball_velocity.x.abs() * normal.x.signum()
@@ -246,7 +242,7 @@ fn check_collision(
                 ball_velocity.0 = new_direction * speed;
             }
 
-            commands.trigger(CollisionEvent { entity });
+            commands.trigger(CollisionEvent { entity, nudge });
         }
     }
 }
@@ -256,12 +252,18 @@ fn on_brick_collision(collision: On<CollisionEvent>, mut commands: Commands) {
     commands.entity(entity).despawn();
 }
 
-fn on_paddle_collision(collision: On<CollisionEvent>) {}
+fn on_ball_collision(
+    collision: On<CollisionEvent>,
+    mut ball_transform: Single<&mut Transform, With<Ball>>,
+) {
+    ball_transform.translation += collision.nudge.extend(0.0)
+}
+
+fn on_paddle_collision(_collision: On<CollisionEvent>) {}
 
 fn on_collision(
-    collision: On<CollisionEvent>,
+    _collision: On<CollisionEvent>,
     mut ball_velocity: Single<&mut Velocity, With<Ball>>,
 ) {
-    // let entity = collision.entity;
     ball_velocity.accelerate();
 }
