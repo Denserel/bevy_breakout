@@ -5,6 +5,7 @@ enum GameState {
     #[default]
     Splash,
     Menu,
+    Ready,
     Play,
     Pause,
 }
@@ -69,7 +70,7 @@ mod splash {
         mut timer: ResMut<SplashTimer>,
     ) {
         if timer.tick(time.delta()).is_finished() {
-            game_state.set(GameState::Play);
+            game_state.set(GameState::Ready);
         }
     }
 }
@@ -77,7 +78,7 @@ mod splash {
 mod game {
     use bevy::math::bounding::{Aabb2d, BoundingCircle, BoundingVolume, IntersectsVolume};
     use bevy::prelude::*;
-    use rand::Rng;
+    use rand::RngExt;
 
     use super::GameState;
 
@@ -89,9 +90,15 @@ mod game {
     const BALL_SPEED: f32 = 300.0;
 
     pub fn game_plugin(app: &mut App) {
-        app.add_systems(Startup, game_setup)
-            // .add_systems(OnEnter(GameState::Play), game_setup)
-            .add_systems(Update, toggle_pause)
+        app.add_systems(OnEnter(GameState::Ready), game_setup)
+            .add_systems(OnEnter(GameState::Pause), pause_overlay)
+            .add_systems(
+                Update,
+                (
+                    toggle_pause.run_if(in_state(GameState::Play).or(in_state(GameState::Pause))),
+                    start_game.run_if(in_state(GameState::Ready)),
+                ),
+            )
             .add_systems(
                 FixedUpdate,
                 (move_paddle, apply_velocity, check_collision)
@@ -136,6 +143,29 @@ mod game {
     ) {
         commands
             .spawn((
+                DespawnOnExit(GameState::Ready),
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+                Node {
+                    width: percent(100),
+                    height: percent(100),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    ..default()
+                },
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("Press space when you are ready"),
+                    TextColor(Color::WHITE),
+                    TextFont {
+                        font_size: 50.0,
+                        ..default()
+                    },
+                ));
+            });
+
+        commands
+            .spawn((
                 Paddle,
                 Collider,
                 Mesh2d(meshes.add(Rectangle::default())),
@@ -172,9 +202,10 @@ mod game {
         let row_start = window.height() / 2.0 - brick_area_gutter - brick_height / 2.0;
 
         for row in 0..BRICK_ROWS {
-            let r = rand::rng().random_range(0.0..1.0);
-            let g = rand::rng().random_range(0.0..1.0);
-            let b = rand::rng().random_range(0.0..1.0);
+            let r = rand::random_range(0.0..1.0);
+            let g = rand::random_range(0.0..1.0);
+            let b = rand::random_range(0.0..1.0);
+
             for column in 0..BRICK_COLUMNS {
                 let brick_x = column_start + column as f32 * (brick_width + brick_gap);
                 let brick_y = row_start - row as f32 * (brick_height + brick_gap);
@@ -195,6 +226,15 @@ mod game {
         }
     }
 
+    fn start_game(
+        mut next_state: ResMut<NextState<GameState>>,
+        keyboard_input: Res<ButtonInput<KeyCode>>,
+    ) {
+        if keyboard_input.just_pressed(KeyCode::Space) {
+            next_state.set(GameState::Play);
+        }
+    }
+
     fn toggle_pause(
         state: Res<State<GameState>>,
         mut next_state: ResMut<NextState<GameState>>,
@@ -207,6 +247,31 @@ mod game {
                 _ => {}
             }
         }
+    }
+
+    fn pause_overlay(mut commands: Commands) {
+        commands
+            .spawn((
+                DespawnOnExit(GameState::Pause),
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+                Node {
+                    width: percent(100),
+                    height: percent(100),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    ..default()
+                },
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("PAUSED"),
+                    TextColor(Color::WHITE),
+                    TextFont {
+                        font_size: 80.0,
+                        ..default()
+                    },
+                ));
+            });
     }
 
     fn move_paddle(
