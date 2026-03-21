@@ -26,7 +26,7 @@ fn main() {
         .insert_resource(Time::<Fixed>::from_hz(120.0))
         .init_state::<GameState>()
         .add_systems(Startup, setup)
-        .add_plugins((splash::splash_plugin, game::game_plugin))
+        .add_plugins((splash::splash_plugin, menu::menu_plugin, game::game_plugin))
         .run();
 }
 
@@ -47,11 +47,11 @@ mod splash {
     }
 
     fn splash_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-        let bevy_logo = asset_server.load("bevy_logo.png");
+        let bevy_logo = asset_server.load("bevy_logo_bevy.png");
 
         commands.spawn((
             DespawnOnExit(GameState::Splash),
-            BackgroundColor(Color::BLACK),
+            BackgroundColor(Color::srgb(0.15, 0.15, 0.15)),
             Node {
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
@@ -61,7 +61,7 @@ mod splash {
             },
             children![(ImageNode::new(bevy_logo))],
         ));
-        commands.insert_resource(SplashTimer(Timer::from_seconds(2.0, TimerMode::Once)));
+        commands.insert_resource(SplashTimer(Timer::from_seconds(3.0, TimerMode::Once)));
     }
 
     fn countdown(
@@ -70,22 +70,78 @@ mod splash {
         mut timer: ResMut<SplashTimer>,
     ) {
         if timer.tick(time.delta()).is_finished() {
-            game_state.set(GameState::Ready);
+            game_state.set(GameState::Menu);
+        }
+    }
+}
+
+mod menu {
+    use super::GameState;
+    use bevy::prelude::*;
+
+    pub fn menu_plugin(app: &mut App) {
+        app.add_systems(OnEnter(GameState::Menu), menu_setup)
+            .add_systems(Update, menu_action.run_if(in_state(GameState::Menu)));
+    }
+
+    fn menu_setup(mut commands: Commands) {
+        commands
+            .spawn((
+                DespawnOnExit(GameState::Menu),
+                BackgroundColor(Color::srgb(0.15, 0.15, 0.15)),
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    flex_direction: FlexDirection::Column,
+                    ..default()
+                },
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new("BEVY BREAKOUT"),
+                    TextFont {
+                        font_size: 80.0,
+                        ..default()
+                    },
+                    TextColor(Color::WHITE),
+                ));
+
+                parent.spawn((
+                    Text::new("Press SPACE to Start"),
+                    TextFont {
+                        font_size: 30.0,
+                        ..default()
+                    },
+                    TextColor(Color::srgb(0.7, 0.7, 0.7)),
+                    Node {
+                        margin: UiRect::top(Val::Px(20.0)),
+                        ..default()
+                    },
+                ));
+            });
+    }
+
+    fn menu_action(
+        keyboard_input: Res<ButtonInput<KeyCode>>,
+        mut next_state: ResMut<NextState<GameState>>,
+    ) {
+        if keyboard_input.just_pressed(KeyCode::Space) {
+            next_state.set(GameState::Ready);
         }
     }
 }
 
 mod game {
+    use super::GameState;
     use bevy::math::bounding::{Aabb2d, BoundingCircle, BoundingVolume, IntersectsVolume};
     use bevy::prelude::*;
-    use rand::RngExt;
-
-    use super::GameState;
 
     const PADDLE_SPEED: f32 = 600.0;
     const PADDLE_WIDTH: f32 = 100.0;
-    const BRICK_ROWS: usize = 10;
-    const BRICK_COLUMNS: usize = 20;
+    const BRICK_ROWS: usize = 2;
+    const BRICK_COLUMNS: usize = 10;
     const BALL_RADIUS: f32 = 10.0;
     const BALL_SPEED: f32 = 300.0;
 
@@ -279,7 +335,7 @@ mod game {
         window: Single<&Window>,
         keyboard_input: Res<ButtonInput<KeyCode>>,
         time: Res<Time>,
-        camera_query: Single<(&Camera, &GlobalTransform)>,
+        // camera_query: Single<(&Camera, &GlobalTransform)>,
     ) {
         let paddle_half_width = PADDLE_WIDTH / 2.0;
         let window_half_width = window.width() / 2.0;
