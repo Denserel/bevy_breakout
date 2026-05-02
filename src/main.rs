@@ -319,26 +319,41 @@ mod menu {
     }
 
     fn button_system(
-        interaction_query: Query<(&Interaction, &SettingButton), Changed<Interaction>>,
+        mut interaction_query: Query<
+            (&Interaction, &mut BackgroundColor, &SettingButton),
+            Changed<Interaction>,
+        >,
         mut settings: ResMut<GameSettings>,
         mut game_state: ResMut<NextState<GlobalGameState>>,
         mut menu_state: ResMut<NextState<MenuState>>,
     ) {
-        for (interaction, button) in &interaction_query {
-            if *interaction != Interaction::Pressed {
-                continue;
-            }
-            match button {
-                SettingButton::Play => game_state.set(GlobalGameState::Game),
-                SettingButton::Back => menu_state.set(MenuState::Main),
-                SettingButton::Settings => menu_state.set(MenuState::Settings),
-                SettingButton::RowsInc => settings.brick_rows = (settings.brick_rows + 1).min(10),
-                SettingButton::RowsDec => settings.brick_rows = (settings.brick_rows - 1).max(1),
-                SettingButton::ColsInc => {
-                    settings.brick_columns = (settings.brick_columns + 1).min(20)
+        for (interaction, mut color, button) in &mut interaction_query {
+            match *interaction {
+                Interaction::Pressed => {
+                    *color = BackgroundColor(Color::srgb(0.4, 0.4, 0.4));
+                    match button {
+                        SettingButton::Play => game_state.set(GlobalGameState::Game),
+                        SettingButton::Back => menu_state.set(MenuState::Main),
+                        SettingButton::Settings => menu_state.set(MenuState::Settings),
+                        SettingButton::RowsInc => {
+                            settings.brick_rows = (settings.brick_rows + 1).min(10)
+                        }
+                        SettingButton::RowsDec => {
+                            settings.brick_rows = (settings.brick_rows - 1).max(1)
+                        }
+                        SettingButton::ColsInc => {
+                            settings.brick_columns = (settings.brick_columns + 1).min(20)
+                        }
+                        SettingButton::ColsDec => {
+                            settings.brick_columns = (settings.brick_columns - 1).max(1)
+                        }
+                    }
                 }
-                SettingButton::ColsDec => {
-                    settings.brick_columns = (settings.brick_columns - 1).max(1)
+                Interaction::Hovered => {
+                    *color = BackgroundColor(Color::srgb(0.5, 0.5, 0.5));
+                }
+                Interaction::None => {
+                    *color = BackgroundColor(Color::srgb(0.3, 0.3, 0.3));
                 }
             }
         }
