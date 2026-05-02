@@ -1,13 +1,26 @@
 use bevy::prelude::*;
 
 #[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
-enum GameState {
+enum GlobalGameState {
     #[default]
     Splash,
     Menu,
-    Ready,
-    Play,
-    Pause,
+    Game,
+}
+
+#[derive(Resource)]
+struct GameSettings {
+    brick_rows: usize,
+    brick_columns: usize,
+}
+
+impl Default for GameSettings {
+    fn default() -> Self {
+        Self {
+            brick_rows: 5,
+            brick_columns: 10,
+        }
+    }
 }
 
 fn main() {
@@ -24,7 +37,8 @@ fn main() {
         }))
         .insert_resource(ClearColor(Color::srgb(0.95, 0.95, 0.95)))
         .insert_resource(Time::<Fixed>::from_hz(120.0))
-        .init_state::<GameState>()
+        .init_state::<GlobalGameState>()
+        .init_resource::<GameSettings>()
         .add_systems(Startup, setup)
         .add_plugins((splash::splash_plugin, menu::menu_plugin, game::game_plugin))
         .run();
@@ -35,22 +49,22 @@ fn setup(mut commands: Commands) {
 }
 
 mod splash {
-    use super::GameState;
+    use super::GlobalGameState;
     use bevy::prelude::*;
 
     #[derive(Resource, Deref, DerefMut)]
     struct SplashTimer(Timer);
 
     pub fn splash_plugin(app: &mut App) {
-        app.add_systems(OnEnter(GameState::Splash), splash_setup)
-            .add_systems(Update, countdown.run_if(in_state(GameState::Splash)));
+        app.add_systems(OnEnter(GlobalGameState::Splash), splash_setup)
+            .add_systems(Update, countdown.run_if(in_state(GlobalGameState::Splash)));
     }
 
     fn splash_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         let bevy_logo = asset_server.load("bevy_logo_bevy.png");
 
         commands.spawn((
-            DespawnOnExit(GameState::Splash),
+            DespawnOnExit(GlobalGameState::Splash),
             BackgroundColor(Color::srgb(0.15, 0.15, 0.15)),
             Node {
                 align_items: AlignItems::Center,
@@ -65,29 +79,67 @@ mod splash {
     }
 
     fn countdown(
-        mut game_state: ResMut<NextState<GameState>>,
+        mut game_state: ResMut<NextState<GlobalGameState>>,
         time: Res<Time>,
         mut timer: ResMut<SplashTimer>,
     ) {
         if timer.tick(time.delta()).is_finished() {
-            game_state.set(GameState::Menu);
+            game_state.set(GlobalGameState::Menu);
         }
     }
 }
 
 mod menu {
-    use super::GameState;
+    use super::{GameSettings, GlobalGameState};
     use bevy::prelude::*;
 
-    pub fn menu_plugin(app: &mut App) {
-        app.add_systems(OnEnter(GameState::Menu), menu_setup)
-            .add_systems(Update, menu_action.run_if(in_state(GameState::Menu)));
+    #[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
+    enum MenuState {
+        #[default]
+        Menu,
+        Main,
+        Settings,
     }
 
-    fn menu_setup(mut commands: Commands) {
+    #[derive(Component)]
+    struct Menu;
+
+    #[derive(Component)]
+    enum SettingButton {
+        RowsInc,
+        RowsDec,
+        ColsInc,
+        ColsDec,
+        Back,
+        Play,
+        Settings,
+    }
+
+    #[derive(Component)]
+    enum SettingLabel {
+        Rows,
+        Cols,
+    }
+
+    pub fn menu_plugin(app: &mut App) {
+        app.add_systems(OnEnter(GlobalGameState::Menu), menu_setup)
+            .add_systems(OnEnter(MenuState::Main), main_menu_setup)
+            .add_systems(OnEnter(MenuState::Settings), settings_menu_setup)
+            .add_systems(
+                Update,
+                (
+                    button_system.run_if(in_state(GlobalGameState::Menu)),
+                    update_settings_labels.run_if(in_state(GlobalGameState::Menu)),
+                ),
+            )
+            .init_state::<MenuState>();
+    }
+
+    fn menu_setup(mut commands: Commands, mut menu_state: ResMut<NextState<MenuState>>) {
         commands
             .spawn((
-                DespawnOnExit(GameState::Menu),
+                Menu,
+                DespawnOnExit(GlobalGameState::Menu),
                 BackgroundColor(Color::srgb(0.15, 0.15, 0.15)),
                 Node {
                     width: Val::Percent(100.0),
@@ -107,61 +159,223 @@ mod menu {
                     },
                     TextColor(Color::WHITE),
                 ));
+            });
 
-                parent.spawn((
-                    Text::new("Press SPACE to Start"),
-                    TextFont {
-                        font_size: 30.0,
-                        ..default()
-                    },
-                    TextColor(Color::srgb(0.7, 0.7, 0.7)),
+        menu_state.set(MenuState::Main);
+    }
+
+    fn main_menu_setup(mut commands: Commands, menu: Single<Entity, With<Menu>>) {
+        commands.entity(menu.entity()).with_children(|parent| {
+            parent
+                .spawn((
+                    DespawnOnExit(MenuState::Main),
                     Node {
-                        margin: UiRect::top(Val::Px(20.0)),
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        row_gap: px(20.0),
                         ..default()
                     },
+                ))
+                .with_children(|col| {
+                    col.spawn((
+                        Text::new("MAIN MENU"),
+                        TextFont {
+                            font_size: 60.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
+                    spawn_button(col, "Play", 150.0, 30.0, SettingButton::Play);
+                    spawn_button(col, "Settings", 150.0, 30.0, SettingButton::Settings);
+                });
+        });
+    }
+
+    fn settings_menu_setup(
+        mut commands: Commands,
+        menu: Single<Entity, With<Menu>>,
+        settings: Res<GameSettings>,
+    ) {
+        commands.entity(menu.entity()).with_children(|parent| {
+            parent
+                .spawn((
+                    DespawnOnExit(MenuState::Settings),
+                    Node {
+                        flex_direction: FlexDirection::Column,
+                        align_content: AlignContent::Center,
+                        row_gap: Val::Px(20.0),
+                        margin: UiRect::top(Val::Px(23.0)),
+                        ..default()
+                    },
+                ))
+                .with_children(|col| {
+                    col.spawn((
+                        Text::new("SETTINGS"),
+                        TextFont {
+                            font_size: 36.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
+                    spawn_setting_row(
+                        col,
+                        "Rows",
+                        settings.brick_rows,
+                        SettingButton::RowsInc,
+                        SettingButton::RowsDec,
+                        SettingLabel::Rows,
+                    );
+                    spawn_setting_row(
+                        col,
+                        "Columns",
+                        settings.brick_columns,
+                        SettingButton::ColsInc,
+                        SettingButton::ColsDec,
+                        SettingLabel::Cols,
+                    );
+                    spawn_button(col, "Back", 100.0, 30.0, SettingButton::Back);
+                });
+        });
+    }
+
+    fn spawn_setting_row(
+        parent: &mut ChildSpawnerCommands,
+        label: &str,
+        value: usize,
+        inc_button: SettingButton,
+        dec_button: SettingButton,
+        label_value: SettingLabel,
+    ) {
+        parent
+            .spawn(Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(16.0),
+                ..default()
+            })
+            .with_children(|row| {
+                row.spawn((
+                    Text::new(format!("{label}")),
+                    TextFont {
+                        font_size: 26.0,
+                        ..default()
+                    },
+                    TextColor(Color::srgb(0.8, 0.8, 0.8)),
+                    Node {
+                        width: Val::Px(100.0),
+                        ..default()
+                    },
+                ));
+                spawn_button(row, "-", 36.0, 36.0, dec_button);
+                row.spawn((
+                    label_value,
+                    Text::new(format!("{value}")),
+                    TextFont {
+                        font_size: 26.0,
+                        ..default()
+                    },
+                    TextColor(Color::WHITE),
+                    Node {
+                        width: Val::Px(40.0),
+                        justify_content: JustifyContent::Center,
+                        ..default()
+                    },
+                ));
+                spawn_button(row, "+", 36.0, 36.0, inc_button);
+            });
+    }
+
+    fn spawn_button(
+        parent: &mut ChildSpawnerCommands,
+        text: &str,
+        width: f32,
+        height: f32,
+        button: SettingButton,
+    ) {
+        parent
+            .spawn((
+                button,
+                Button,
+                BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
+                Node {
+                    width: Val::Px(width),
+                    height: Val::Px(height),
+                    align_content: AlignContent::Center,
+                    justify_content: JustifyContent::Center,
+                    ..default()
+                },
+            ))
+            .with_children(|btn| {
+                btn.spawn((
+                    Text::new(text),
+                    TextFont {
+                        font_size: 24.0,
+                        ..default()
+                    },
+                    TextColor(Color::WHITE),
                 ));
             });
     }
 
-    fn menu_action(
-        keyboard_input: Res<ButtonInput<KeyCode>>,
-        mut next_state: ResMut<NextState<GameState>>,
+    fn button_system(
+        interaction_query: Query<(&Interaction, &SettingButton), Changed<Interaction>>,
+        mut settings: ResMut<GameSettings>,
+        mut game_state: ResMut<NextState<GlobalGameState>>,
+        mut menu_state: ResMut<NextState<MenuState>>,
     ) {
-        if keyboard_input.just_pressed(KeyCode::Space) {
-            next_state.set(GameState::Ready);
+        for (interaction, button) in &interaction_query {
+            if *interaction != Interaction::Pressed {
+                continue;
+            }
+            match button {
+                SettingButton::Play => game_state.set(GlobalGameState::Game),
+                SettingButton::Back => menu_state.set(MenuState::Main),
+                SettingButton::Settings => menu_state.set(MenuState::Settings),
+                SettingButton::RowsInc => settings.brick_rows = (settings.brick_rows + 1).min(10),
+                SettingButton::RowsDec => settings.brick_rows = (settings.brick_rows - 1).max(1),
+                SettingButton::ColsInc => {
+                    settings.brick_columns = (settings.brick_columns + 1).min(20)
+                }
+                SettingButton::ColsDec => {
+                    settings.brick_columns = (settings.brick_columns - 1).max(1)
+                }
+            }
+        }
+    }
+
+    fn update_settings_labels(
+        settings: Res<GameSettings>,
+        mut label_query: Query<(&SettingLabel, &mut Text)>,
+    ) {
+        if !settings.is_changed() {
+            return;
+        }
+        for (label, mut text) in &mut label_query {
+            match label {
+                SettingLabel::Rows => **text = settings.brick_rows.to_string(),
+                SettingLabel::Cols => **text = settings.brick_columns.to_string(),
+            }
         }
     }
 }
 
 mod game {
-    use super::GameState;
+    use super::{GameSettings, GlobalGameState};
     use bevy::math::bounding::{Aabb2d, BoundingCircle, BoundingVolume, IntersectsVolume};
     use bevy::prelude::*;
 
     const PADDLE_SPEED: f32 = 600.0;
     const PADDLE_WIDTH: f32 = 100.0;
-    const BRICK_ROWS: usize = 2;
-    const BRICK_COLUMNS: usize = 10;
     const BALL_RADIUS: f32 = 10.0;
     const BALL_SPEED: f32 = 300.0;
 
-    pub fn game_plugin(app: &mut App) {
-        app.add_systems(OnEnter(GameState::Ready), game_setup)
-            .add_systems(OnEnter(GameState::Pause), pause_overlay)
-            .add_systems(
-                Update,
-                (
-                    toggle_pause.run_if(in_state(GameState::Play).or(in_state(GameState::Pause))),
-                    start_game.run_if(in_state(GameState::Ready)),
-                ),
-            )
-            .add_systems(
-                FixedUpdate,
-                (move_paddle, apply_velocity, check_collision)
-                    .chain()
-                    .run_if(in_state(GameState::Play)),
-            )
-            .add_observer(on_collision);
+    #[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
+    enum GameState {
+        #[default]
+        Ready,
+        Play,
+        Pause,
     }
 
     #[derive(Component)]
@@ -191,11 +405,32 @@ mod game {
     #[derive(Component)]
     struct Collider;
 
+    pub fn game_plugin(app: &mut App) {
+        app.add_systems(OnEnter(GlobalGameState::Game), game_setup)
+            .add_systems(OnEnter(GameState::Pause), pause_overlay)
+            .init_state::<GameState>()
+            .add_systems(
+                Update,
+                (
+                    toggle_pause.run_if(in_state(GameState::Play).or(in_state(GameState::Pause))),
+                    start_game.run_if(in_state(GlobalGameState::Game)),
+                ),
+            )
+            .add_systems(
+                FixedUpdate,
+                (move_paddle, apply_velocity, check_collision)
+                    .chain()
+                    .run_if(in_state(GameState::Play)),
+            )
+            .add_observer(on_collision);
+    }
+
     fn game_setup(
         mut commands: Commands,
         mut meshes: ResMut<Assets<Mesh>>,
         mut materials: ResMut<Assets<ColorMaterial>>,
         window: Single<&Window>,
+        settings: Res<GameSettings>,
     ) {
         commands
             .spawn((
@@ -251,18 +486,19 @@ mod game {
         let brick_area_gutter = 10.0;
         let brick_gap = 5.0;
         let brick_height = 20.0;
-        let brick_area_width =
-            window.width() - (brick_area_gutter * 2.0) - (brick_gap * (BRICK_COLUMNS as f32 - 1.0));
-        let brick_width = brick_area_width / BRICK_COLUMNS as f32;
+        let brick_area_width = window.width()
+            - (brick_area_gutter * 2.0)
+            - (brick_gap * (settings.brick_columns as f32 - 1.0));
+        let brick_width = brick_area_width / settings.brick_columns as f32;
         let column_start = -window.width() / 2.0 + brick_area_gutter + brick_width / 2.0;
         let row_start = window.height() / 2.0 - brick_area_gutter - brick_height / 2.0;
 
-        for row in 0..BRICK_ROWS {
+        for row in 0..settings.brick_rows {
             let r = rand::random_range(0.0..1.0);
             let g = rand::random_range(0.0..1.0);
             let b = rand::random_range(0.0..1.0);
 
-            for column in 0..BRICK_COLUMNS {
+            for column in 0..settings.brick_columns {
                 let brick_x = column_start + column as f32 * (brick_width + brick_gap);
                 let brick_y = row_start - row as f32 * (brick_height + brick_gap);
                 commands
